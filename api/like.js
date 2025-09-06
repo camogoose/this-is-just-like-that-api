@@ -14,9 +14,11 @@ export default async function handler(req, res) {
 
     const prompt = `
 Return ONLY a JSON object with these fields:
-- match: best neighborhood/city match
-- why: one-sentence explanation (<=200 chars)
-- tags: 3 short keywords
+{
+  "match": "best neighborhood/city match",
+  "why": "one-sentence explanation (<=200 chars)",
+  "tags": ["tag1","tag2","tag3"]
+}
 
 Source: "${source_place}"
 Target scope: "${target_scope}"
@@ -32,23 +34,27 @@ Target scope: "${target_scope}"
         model: "gpt-4o-mini",
         temperature: 0.4,
         messages: [
-          { role: "system", content: "Reply ONLY with a JSON object. Do not add text outside JSON." },
+          { role: "system", content: "You are an API. Always return ONLY valid JSON. No text outside JSON." },
           { role: "user", content: prompt }
         ],
       }),
     });
 
     const data = await r.json();
-    const text = data?.choices?.[0]?.message?.content?.trim();
+    let text = data?.choices?.[0]?.message?.content?.trim() || "{}";
+
+    // 🔹 Extract JSON from messy output
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) text = jsonMatch[0];
 
     let payload;
     try {
       payload = JSON.parse(text);
     } catch {
       payload = { 
-        match: text || "No exact twin found (ish)", 
-        why: "AI gave free text instead of JSON, showing raw output.", 
-        tags: ["raw","fallback","ish"] 
+        match: "No exact twin found (ish)", 
+        why: "Could not parse AI output into JSON.", 
+        tags: ["parse-error","fallback","ish"] 
       };
     }
 
