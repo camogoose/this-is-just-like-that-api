@@ -1,6 +1,4 @@
-// /api/like.js
 export default async function handler(req, res) {
-  // CORS so Squarespace can call it
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -15,7 +13,7 @@ export default async function handler(req, res) {
     }
 
     const prompt = `
-Return a JSON object with these fields:
+Return ONLY a JSON object with these fields:
 - match: best neighborhood/city match
 - why: one-sentence explanation (<=200 chars)
 - tags: 3 short keywords
@@ -34,23 +32,23 @@ Target scope: "${target_scope}"
         model: "gpt-4o-mini",
         temperature: 0.4,
         messages: [
-          { role: "system", content: "You map neighborhoods/cities to their closest vibe matches. Reply ONLY in JSON." },
+          { role: "system", content: "Reply ONLY with a JSON object. Do not add text outside JSON." },
           { role: "user", content: prompt }
         ],
       }),
     });
 
     const data = await r.json();
-    const text = data?.choices?.[0]?.message?.content?.trim() || "{}";
+    const text = data?.choices?.[0]?.message?.content?.trim();
 
     let payload;
-    try { 
-      payload = JSON.parse(text); 
+    try {
+      payload = JSON.parse(text);
     } catch {
       payload = { 
-        match: "No exact twin found (ish)", 
-        why: "Try a broader scope or tweak the place name.", 
-        tags: ["try broader","refine","ish"] 
+        match: text || "No exact twin found (ish)", 
+        why: "AI gave free text instead of JSON, showing raw output.", 
+        tags: ["raw","fallback","ish"] 
       };
     }
 
