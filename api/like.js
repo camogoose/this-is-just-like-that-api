@@ -1,50 +1,69 @@
-export const runtime = "nodejs"; // required so we can use the OpenAI SDK (Node runtime)
-// import OpenAI from "openai"; // uncomment after you confirm CORS works
+export const config = {
+  runtime: "edge", // keep using Edge runtime
+};
 
-const CORS = {
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // make sure this is set in Vercel → Settings → Environment Variables
+});
+
+const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: CORS });
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-// Optional GET so you can hit the URL in a browser
-export async function GET() {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
-}
-
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const { source_place = "", target_scope = "" } = body;
+    const body = await req.json();
+    const { source_place, target_scope } = body;
 
-    // TEMP: return mock so we can confirm CORS before wiring OpenAI
-    const results = [
-      { match: "Nørrebro", city: "Copenhagen", region: "Denmark",
-        why: "Bohemian, multicultural vibe with indie shops and nightlife.",
-        highlights: ["bohemian","nightlife","indie shops"] },
-      { match: "Vesterbro", city: "Copenhagen", region: "Denmark",
-        why: "Trendy and youthful with bars, cafés, and creative spaces.",
-        highlights: ["trendy","youthful","cafés"] },
-      { match: "Christianshavn", city: "Copenhagen", region: "Denmark",
-        why: "Canals + mix of historic and artsy energy; relaxed but lively.",
-        highlights: ["canals","historic","artsy"] },
-    ];
+    // Send prompt to OpenAI
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5-mini",  // cheaper + fast
+      messages: [
+        {
+          role: "system",
+          content: "You are a city/neighborhood comparison assistant. Respond with JSON only.",
+        },
+        {
+          role: "user",
+          content: `Find 3 neighborhoods in ${target_scope} that are most similar to ${source_place}.
+          Return strictly in this JSON format:
+          {
+            "results": [
+              {
+                "match": "Neighborhood name",
+                "city": "City name",
+                "region": "${target_scope}",
+                "why": "1–2 sentence explanation",
+                "highlights": ["keyword1","keyword2","keyword3"]
+              }
+            ]
+          }`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
 
-    return new Response(JSON.stringify({ results, echo: { source_place, target_scope } }), {
+    const json = JSON.parse(completion.choices[0].message.content);
+
+    return new Response(JSON.stringify(json), {
       status: 200,
-      headers: { ...CORS, "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), {
-      status: 500,
-      headers: { ...CORS, "Content-Type": "application/json" },
-    });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: String(err.message || err) }),
+      {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      }
+    );
   }
 }
