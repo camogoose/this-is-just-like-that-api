@@ -50,3 +50,29 @@ Target scope: "${target_scope}"
         ],
       }),
     });
+
+    if (!r.ok) {
+      const err = await r.text().catch(() => "");
+      return json({ error: "OpenAI request failed", details: err }, 502);
+    }
+
+    const data = await r.json();
+    const text = data?.choices?.[0]?.message?.content?.trim() || "{}";
+
+    let payload;
+    try {
+      payload = JSON.parse(text);
+      if (!payload.match) throw new Error("bad");
+    } catch {
+      payload = {
+        match: "No exact twin found (ish)",
+        why: "Try a broader scope (country/major city) or tweak the place name.",
+        tags: ["try broader", "refine", "ish"],
+      };
+    }
+
+    return json(payload, 200);
+  } catch (e) {
+    return json({ error: "Server error", details: String(e) }, 500);
+  }
+}
