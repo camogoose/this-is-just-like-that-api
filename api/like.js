@@ -1,10 +1,14 @@
+// api/like.js
 export default async function handler(req, res) {
+  // Allow Squarespace frontend calls
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Use POST" });
+  }
 
   try {
     const { source_place, target_scope } = req.body || {};
@@ -13,7 +17,8 @@ export default async function handler(req, res) {
     }
 
     const prompt = `
-Return ONLY a JSON object with these fields:
+Return ONLY a JSON object in this exact shape:
+
 {
   "match": "best neighborhood/city match",
   "why": "one-sentence explanation (<=200 chars)",
@@ -34,7 +39,10 @@ Target scope: "${target_scope}"
         model: "gpt-4o-mini",
         temperature: 0.4,
         messages: [
-          { role: "system", content: "You are an API. Always return ONLY valid JSON. No text outside JSON." },
+          {
+            role: "system",
+            content: "You are an API. Reply ONLY with valid JSON. No text outside JSON. If you add extra words, it breaks."
+          },
           { role: "user", content: prompt }
         ],
       }),
@@ -43,18 +51,20 @@ Target scope: "${target_scope}"
     const data = await r.json();
     let text = data?.choices?.[0]?.message?.content?.trim() || "{}";
 
-    // 🔹 Extract JSON from messy output
+    // 🔹 Extract first {...} block if AI includes extra words
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) text = jsonMatch[0];
+    if (jsonMatch) {
+      text = jsonMatch[0];
+    }
 
     let payload;
     try {
       payload = JSON.parse(text);
     } catch {
-      payload = { 
-        match: "No exact twin found (ish)", 
-        why: "Could not parse AI output into JSON.", 
-        tags: ["parse-error","fallback","ish"] 
+      payload = {
+        match: "No exact twin found (ish)",
+        why: "Could not parse AI output into JSON.",
+        tags: ["parse-error", "fallback", "ish"]
       };
     }
 
