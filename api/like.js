@@ -7,7 +7,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-// Respond to the browser's preflight check
+// Preflight (for browser CORS checks)
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -23,7 +23,7 @@ export async function POST(req) {
       );
     }
 
-    // Prompt: force JSON
+    // ---- Prompt (force JSON) ----
     const prompt = `
 Return ONLY a JSON object in this exact shape:
 
@@ -37,8 +37,8 @@ Source: "${source_place}"
 Target scope: "${target_scope}"
 `;
 
-    // Call OpenAI via REST (works in edge/standard runtime)
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    // ---- Call OpenAI ----
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -58,14 +58,22 @@ Target scope: "${target_scope}"
       }),
     });
 
-    const body = await r.json();
+    if (!aiRes.ok) {
+      const errTxt = await aiRes.text().catch(() => "");
+      return new Response(
+        JSON.stringify({ match: null, why: "OpenAI error", details: errTxt, tags: [] }),
+        { status: 502, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
 
-    let text = body?.choices?.[0]?.message?.content?.trim() || "{}";
+    const aiBody = await aiRes.json().catch(() => ({}));
+    let text = aiBody?.choices?.[0]?.message?.content?.trim() || "{}";
 
-    // Extract the first {...} block if extra text sneaks in
+    // ---- Extract first JSON block if extra words sneak in ----
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) text = jsonMatch[0];
 
+    // ---- Parse safely; provide fallback ----
     let payload;
     try {
       payload = JSON.parse(text);
@@ -73,9 +81,16 @@ Target scope: "${target_scope}"
       payload = {
         match: null,
         why: "Could not parse AI output into JSON.",
-        tags: ["parse-error", "fallback", "ish"],
+        tags: ["parse-error","fallback","ish"],
       };
     }
+
+    // Ensure keys exist
+    payload = {
+      match: payload.match ?? null,
+      why: payload.why ?? (payload.match ? "" : "No exact twin found (ish)"),
+      tags: Array.isArray(payload.tags) ? payload.tags : [],
+    };
 
     return new Response(JSON.stringify(payload), {
       status: 200,
@@ -83,7 +98,7 @@ Target scope: "${target_scope}"
     });
   } catch (err) {
     return new Response(
-      JSON.stringify({ match: null, why: "Server error", tags: [] }),
+      JSON.stringify({ match: null, why: "Server error", details: String(err), tags: [] }),
       { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
     );
   }
