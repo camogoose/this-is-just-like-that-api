@@ -1,66 +1,90 @@
 // app/api/like/route.js
-import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// ---- CORS helpers ----
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Respond to the browser's preflight check
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
 
 export async function POST(req) {
   try {
     const { source_place, target_scope } = await req.json();
 
-    // Ask ChatGPT to find a twin neighborhood/city
-    const prompt = `
-    Find a place in ${target_scope} that is most like ${source_place}.
-    Return ONLY a JSON object with this format:
-    {
-      "match": "Name of matching neighborhood or city",
-      "why": "One sentence why they are similar",
-      "tags": ["short", "keywords", "about", "the", "similarity"]
+    if (!source_place || !target_scope) {
+      return new Response(
+        JSON.stringify({ error: "Missing source_place or target_scope" }),
+        { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
     }
-    If you cannot find a close match, still return the JSON with "match": null and explain why.
-    `;
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
+    // Prompt: force JSON
+    const prompt = `
+Return ONLY a JSON object in this exact shape:
+
+{
+  "match": "best neighborhood/city match",
+  "why": "one-sentence explanation (<=200 chars)",
+  "tags": ["tag1","tag2","tag3"]
+}
+
+Source: "${source_place}"
+Target scope: "${target_scope}"
+`;
+
+    // Call OpenAI via REST (works in edge/standard runtime)
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.4,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an API. Reply ONLY with valid JSON. No text outside JSON."
+          },
+          { role: "user", content: prompt },
+        ],
+      }),
     });
 
-    let text = completion.choices[0].message.content;
+    const body = await r.json();
 
-    // Try parsing JSON safely
-    let data;
+    let text = body?.choices?.[0]?.message?.content?.trim() || "{}";
+
+    // Extract the first {...} block if extra text sneaks in
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) text = jsonMatch[0];
+
+    let payload;
     try {
-      data = JSON.parse(text);
-    } catch (err) {
-      // Fallback if model returned free text
-      data = {
+      payload = JSON.parse(text);
+    } catch {
+      payload = {
         match: null,
-        why: "AI gave free text instead of JSON.",
-        raw: text,
-        tags: [],
+        why: "Could not parse AI output into JSON.",
+        tags: ["parse-error", "fallback", "ish"],
       };
     }
 
-    // Always return JSON
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify(payload), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
-  } catch (error) {
-    console.error("[like] ERROR:", error);
-
+  } catch (err) {
     return new Response(
-      JSON.stringify({
-        match: null,
-        why: "Server error",
-        tags: [],
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+      JSON.stringify({ match: null, why: "Server error", tags: [] }),
+      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
     );
   }
 }
