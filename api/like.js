@@ -1,4 +1,4 @@
-<!-- This Is Just Like That(ish) — 3 results, no debug -->
+<!-- This Is Just Like That(ish) — 3 results, NO DEBUG (v1.3) -->
 <div id="tilt-ish" style="max-width:920px;margin:0 auto;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
   <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:12px;">
     <div style="font-weight:700;">This Is Just Like That</div>
@@ -37,7 +37,7 @@
 
 <script>
 (function(){
-  // 🔒 Your endpoint URL (replace if needed)
+  // 🔒 Replace with your endpoint if different
   const ENDPOINT_URL = "https://this-is-just-like-that-api-86v6.vercel.app/api/like";
 
   const btn  = document.getElementById("goBtn");
@@ -58,75 +58,3 @@
     const title = document.createElement("div");
     title.style.fontWeight = "700";
     title.textContent = `“${src}” — is just like that (in ${scope}): ${item.match}${item.city ? ", " + item.city : ""}${item.region ? " — " + item.region : ""}`;
-    wrap.appendChild(title);
-
-    const why = document.createElement("div");
-    why.style.color = "#555";
-    why.textContent = item.why || "";
-    wrap.appendChild(why);
-
-    const tags = document.createElement("div");
-    tags.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
-    (item.highlights||[]).forEach(t => tags.appendChild(chip(t)));
-    wrap.appendChild(tags);
-
-    if (item.notes){
-      const small = document.createElement("div");
-      small.style.cssText = "color:#777;font-size:.85rem;";
-      small.textContent = item.notes;
-      wrap.appendChild(small);
-    }
-    return wrap;
-  }
-
-  async function fetchTriplet(src, scope){
-    const res = await fetch(ENDPOINT_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source_place: src, target_scope: scope })
-    });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return await res.json();
-  }
-
-  function renderResults(payload, src, scope){
-    msg.style.display = "none"; msg.textContent = "";
-    grid.innerHTML = "";
-    const list = Array.isArray(payload?.results) ? payload.results : [];
-    if (!list.length){
-      msg.textContent = "No matches returned (ish). Try a broader scope or adjust the place.";
-      msg.style.display = "block";
-      grid.style.display = "none";
-      return;
-    }
-    list.forEach(it => grid.appendChild(card(it, src, scope)));
-    grid.style.display = "grid";
-  }
-
-  function showError(text){
-    grid.style.display = "none";
-    grid.innerHTML = "";
-    msg.textContent = String(text);
-    msg.style.display = "block";
-  }
-
-  btn?.addEventListener("click", async function(){
-    const src   = (document.getElementById("sourcePlace").value || "").trim();
-    const scope = (document.getElementById("targetScope").value || "").trim();
-
-    if (!ENDPOINT_URL) return showError("Missing endpoint URL.");
-    if (!src || !scope) return showError("Please fill both inputs.");
-
-    const old = btn.textContent; btn.disabled = true; btn.textContent = "Thinking…";
-    try {
-      const payload = await fetchTriplet(src, scope);
-      renderResults(payload, src, scope);
-    } catch (e) {
-      showError(e?.message || e);
-      console.error(e);
-    } finally {
-      btn.disabled = false; btn.textContent = old;
-    }
-  });
-})();
-</script>
