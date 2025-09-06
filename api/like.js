@@ -1,25 +1,15 @@
-// app/api/like/route.js
-export const runtime = "nodejs";
+// pages/api/like.js
+export default async function handler(req, res) {
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("access-control-allow-methods", "POST, OPTIONS");
+  res.setHeader("access-control-allow-headers", "content-type, authorization");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
-function sendJSON(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST, OPTIONS",
-      "access-control-allow-headers": "content-type, authorization",
-    },
-  });
-}
-
-export async function OPTIONS() { return sendJSON({}); }
-
-export async function POST(request) {
   try {
-    const { source_place, target_scope } = await request.json();
+    const { source_place, target_scope } = req.body || {};
     if (!source_place || !target_scope) {
-      return sendJSON({ error: "Missing source_place or target_scope" }, 400);
+      return res.status(400).json({ error: "Missing source_place or target_scope" });
     }
 
     const prompt = `
@@ -68,7 +58,7 @@ Target scope: "${target_scope}"
 
     if (!r.ok) {
       const errText = await r.text().catch(() => "");
-      return sendJSON({ error: "OpenAI request failed", details: errText }, 502);
+      return res.status(502).json({ error: "OpenAI request failed", details: errText });
     }
 
     const data = await r.json();
@@ -93,8 +83,8 @@ Target scope: "${target_scope}"
       };
     }
 
-    return sendJSON(payload, 200);
+    return res.status(200).json(payload);
   } catch (e) {
-    return sendJSON({ error: "Server error", details: String(e) }, 500);
+    return res.status(500).json({ error: "Server error", details: String(e) });
   }
 }
